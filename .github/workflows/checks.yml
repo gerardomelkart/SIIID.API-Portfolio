@@ -1,0 +1,25 @@
+name: Verificar demo
+on: [push, pull_request]
+permissions:
+  contents: read
+jobs:
+  checks:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+      - run: dotnet build src/Portfolio.Api.csproj -c Release
+      - run: dotnet run --project tests/Portfolio.Checks.csproj -c Release
+      - name: Recorrido HTTP local
+        shell: bash
+        run: |
+          dotnet run --project src/Portfolio.Api.csproj -c Release --no-build > /tmp/portfolio-api.log 2>&1 &
+          api_pid=$!
+          trap 'kill "$api_pid" || true' EXIT
+          for attempt in $(seq 1 30); do
+            if curl --fail --silent http://127.0.0.1:5088/api/state > /dev/null; then break; fi
+            sleep 1
+          done
+          python3 tests/http_smoke.py
